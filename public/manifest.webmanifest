@@ -1,0 +1,23 @@
+{
+  "name": "Your Name Restaurant Admin",
+  "short_name": "RestaurantAdmin",
+  "start_url": "/admin.html",
+  "display": "standalone",
+  "background_color": "#0f1c39",
+  "theme_color": "#0f1c39",
+  "description": "Restaurant admin dashboard with products, orders, users, coupons, notifications, and analytics.",
+  "icons": [
+    {
+      "src": "/assets/logo-chef.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/logo-chef.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
