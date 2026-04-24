@@ -1,24 +1,34 @@
 const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
 
 function initTooltips() {
-  const triggerList = Array.from(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-  triggerList.forEach((el) => new bootstrap.Tooltip(el));
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => new bootstrap.Tooltip(el));
 }
-
+function initPasswordToggles() {
+  document.querySelectorAll('.toggle-pass').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      const icon = btn.querySelector('i');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  });
+}
 function showToast(message, kind = 'success') {
-  const toastZone = document.getElementById('toastZone');
-  if (!toastZone) return;
-
-  const wrapper = document.createElement('div');
-  wrapper.className = `toast align-items-center text-bg-${kind === 'success' ? 'success' : 'danger'} border-0 show mb-2`;
-  wrapper.role = 'alert';
-  wrapper.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto"></button></div>`;
-
-  wrapper.querySelector('button').addEventListener('click', () => wrapper.remove());
-  toastZone.appendChild(wrapper);
-  setTimeout(() => wrapper.remove(), 4500);
+  const zone = document.getElementById('toastZone');
+  if (!zone) return;
+  const wrap = document.createElement('div');
+  wrap.className = `toast align-items-center text-bg-${kind === 'success' ? 'success' : 'danger'} border-0 show mb-2`;
+  wrap.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div></div>`;
+  zone.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 3000);
 }
-
+async function postJSON(url, payload) {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Request failed');
+  return data;
+}
 function scorePassword(pwd) {
   let score = 0;
   if (pwd.length >= 8) score += 1;
@@ -28,61 +38,28 @@ function scorePassword(pwd) {
   if (/[^A-Za-z\d]/.test(pwd)) score += 1;
   return score;
 }
-
 function updateStrengthUI(pwd) {
   const fill = document.getElementById('strengthFill');
   const label = document.getElementById('strengthLabel');
   if (!fill || !label) return;
-
   const score = scorePassword(pwd);
-  const percent = (score / 5) * 100;
-  fill.style.width = `${percent}%`;
-
-  if (score <= 2) {
-    fill.style.backgroundColor = '#dc2626';
-    label.textContent = 'Strength: Weak';
-  } else if (score === 3 || score === 4) {
-    fill.style.backgroundColor = '#f59e0b';
-    label.textContent = 'Strength: Medium';
-  } else {
-    fill.style.backgroundColor = '#16a34a';
-    label.textContent = 'Strength: Strong';
-  }
-}
-
-async function postJSON(url, payload) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Request failed');
-  }
-  return data;
+  fill.style.width = `${(score / 5) * 100}%`;
+  label.textContent = score <= 2 ? 'Strength: Weak' : score <= 4 ? 'Strength: Medium' : 'Strength: Strong';
+  fill.style.backgroundColor = score <= 2 ? '#dc2626' : score <= 4 ? '#f59e0b' : '#16a34a';
 }
 
 function setupRegister() {
   const form = document.getElementById('registerForm');
   if (!form) return;
-
   const password = document.getElementById('password');
   const repeatPassword = document.getElementById('repeatPassword');
   const matchMsg = document.getElementById('matchMsg');
-
-  password.addEventListener('input', () => {
-    updateStrengthUI(password.value);
-  });
-
+  password.addEventListener('input', () => updateStrengthUI(password.value));
   repeatPassword.addEventListener('input', () => {
-    matchMsg.textContent =
-      repeatPassword.value && repeatPassword.value !== password.value ? 'Passwords do not match.' : '';
+    matchMsg.textContent = repeatPassword.value && repeatPassword.value !== password.value ? 'Passwords do not match.' : '';
   });
-
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const payload = {
       firstName: document.getElementById('firstName').value.trim(),
       lastName: document.getElementById('lastName').value.trim(),
@@ -90,79 +67,54 @@ function setupRegister() {
       password: password.value,
       repeatPassword: repeatPassword.value
     };
-
-    if (!passwordPattern.test(payload.password)) {
-      showToast('Password policy not satisfied.', 'danger');
-      return;
-    }
-
-    if (payload.password !== payload.repeatPassword) {
-      showToast('Password and Repeat Password must match.', 'danger');
-      return;
-    }
-
+    if (!passwordPattern.test(payload.password)) return showToast('Password policy not satisfied', 'danger');
+    if (payload.password !== payload.repeatPassword) return showToast('Passwords not matching', 'danger');
     try {
-      const result = await postJSON('/api/register', payload);
-      showToast(result.message, 'success');
-      form.reset();
-      updateStrengthUI('');
-      setTimeout(() => {
-        window.location.href = '/login.html';
-      }, 1200);
-    } catch (err) {
-      showToast(err.message, 'danger');
+      await postJSON('/api/register', payload);
+      showToast('Registered successfully');
+      setTimeout(() => (location.href = '/login.html'), 900);
+    } catch (e2) {
+      showToast(e2.message, 'danger');
     }
   });
 }
-
 function setupLogin() {
   const form = document.getElementById('loginForm');
   if (!form) return;
-
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    const payload = {
-      email: document.getElementById('loginEmail').value.trim(),
-      password: document.getElementById('loginPassword').value,
-      rememberMe: document.getElementById('rememberMe').checked
-    };
-
     try {
-      const result = await postJSON('/api/login', payload);
-      showToast(`Welcome ${result.fullName}`, 'success');
-    } catch (err) {
-      showToast(err.message, 'danger');
+      const data = await postJSON('/api/login', {
+        email: document.getElementById('loginEmail').value.trim(),
+        password: document.getElementById('loginPassword').value,
+        rememberMe: document.getElementById('rememberMe').checked
+      });
+      showToast('Login success');
+      setTimeout(() => {
+        location.href = data.redirectTo || '/';
+      }, 700);
+    } catch (e2) {
+      showToast(e2.message, 'danger');
     }
   });
 }
-
 function setupForgot() {
-  const forgotForm = document.getElementById('forgotForm');
-  const resetForm = document.getElementById('resetForm');
-
-  if (forgotForm) {
-    forgotForm.addEventListener('submit', async (e) => {
+  const forgot = document.getElementById('forgotForm');
+  const reset = document.getElementById('resetForm');
+  if (forgot) {
+    forgot.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('forgotEmail').value.trim();
       try {
-        const result = await postJSON('/api/forgot-password', { email });
-        showToast(result.message, 'success');
-        if (result.resetCode) {
-          showToast(`Demo reset code: ${result.resetCode}`, 'success');
-          const resetCode = document.getElementById('resetCode');
-          const resetEmail = document.getElementById('resetEmail');
-          if (resetCode) resetCode.value = result.resetCode;
-          if (resetEmail) resetEmail.value = email;
-        }
-      } catch (err) {
-        showToast(err.message, 'danger');
+        const r = await postJSON('/api/forgot-password', { email: document.getElementById('forgotEmail').value.trim() });
+        showToast(`${r.message}${r.resetCode ? ` (Demo code: ${r.resetCode})` : ''}`);
+        document.getElementById('resetEmail').value = document.getElementById('forgotEmail').value.trim();
+      } catch (e2) {
+        showToast(e2.message, 'danger');
       }
     });
   }
-
-  if (resetForm) {
-    resetForm.addEventListener('submit', async (e) => {
+  if (reset) {
+    reset.addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = {
         email: document.getElementById('resetEmail').value.trim(),
@@ -170,26 +122,12 @@ function setupForgot() {
         newPassword: document.getElementById('newPassword').value,
         repeatPassword: document.getElementById('repeatNewPassword').value
       };
-
-      if (!passwordPattern.test(payload.newPassword)) {
-        showToast('New password policy not satisfied.', 'danger');
-        return;
-      }
-
-      if (payload.newPassword !== payload.repeatPassword) {
-        showToast('New password and repeated one must match.', 'danger');
-        return;
-      }
-
       try {
-        const result = await postJSON('/api/reset-password', payload);
-        showToast(result.message, 'success');
-        resetForm.reset();
-        setTimeout(() => {
-          window.location.href = '/login.html';
-        }, 1200);
-      } catch (err) {
-        showToast(err.message, 'danger');
+        await postJSON('/api/reset-password', payload);
+        showToast('Password updated');
+        setTimeout(() => (location.href = '/login.html'), 900);
+      } catch (e2) {
+        showToast(e2.message, 'danger');
       }
     });
   }
@@ -197,6 +135,7 @@ function setupForgot() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initTooltips();
+  initPasswordToggles();
   setupRegister();
   setupLogin();
   setupForgot();

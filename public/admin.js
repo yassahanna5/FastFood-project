@@ -1,46 +1,11 @@
-const API_LINKS = [
-  ['بيتزا 🍕', 'https://free-food-menus-api-two.vercel.app/pizzas'],
-  ['برجر 🍔', 'https://free-food-menus-api-two.vercel.app/burgers'],
-  ['حلويات 🍰', 'https://free-food-menus-api-two.vercel.app/desserts'],
-  ['مشروبات 🥤', 'https://free-food-menus-api-two.vercel.app/drinks'],
-  ['مأكولات بحرية 🦐', 'https://free-food-menus-api-two.vercel.app/seafoods'],
-  ['مشويات 🥩', 'https://free-food-menus-api-two.vercel.app/steaks'],
-  ['دجاج مقلي 🍗', 'https://free-food-menus-api-two.vercel.app/fried-chicken'],
-  ['ساندوتشات 🥪', 'https://free-food-menus-api-two.vercel.app/sandwiches'],
-  ['أيس كريم 🍦', 'https://free-food-menus-api-two.vercel.app/ice-cream'],
-  ['شوكولاتة 🍫', 'https://free-food-menus-api-two.vercel.app/chocolates'],
-  ['مشاوي (BBQ) 🍖', 'https://free-food-menus-api-two.vercel.app/bbqs'],
-  ['خبز (Breads) 🥖', 'https://free-food-menus-api-two.vercel.app/breads'],
-  ['لحم خنزير (Porks) 🥓', 'https://free-food-menus-api-two.vercel.app/porks'],
-  ['سجق (Sausages) 🌭', 'https://free-food-menus-api-two.vercel.app/sausages'],
-  ['Best Food ⭐', 'https://free-food-menus-api-two.vercel.app/best-foods']
-];
+let barChart;
+let pieChart;
 
-const state = {
-  products: [],
-  users: [
-    { id: 1, name: 'Anton Hanna', email: 'dr.antonhanna2005@gmail.com', role: 'admin', status: 'active' },
-    { id: 2, name: 'Yassa Hanna', email: 'yassahanna5@gmail.com', role: 'customer', status: 'active' }
-  ],
-  orders: [
-    { id: '#ORD-001', customer: 'Anton Hanna', total: 63.99, status: 'processing', track: 'Kitchen preparing' },
-    { id: '#ORD-002', customer: 'Yassa Hanna', total: 194.37, status: 'cancelled', track: 'Cancelled by customer' }
-  ],
-  coupons: [{ id: 1, code: 'WELCOME20', discount: 20, expiry: '2026-12-31', status: 'active' }],
-  notifications: [],
-  logs: []
-};
-
-let deferredPrompt = null;
-
-function logAction(text) {
-  const stamp = new Date().toLocaleString();
-  state.logs.unshift(`[${stamp}] ${text}`);
-  renderLogs();
-}
-
-function initTooltips() {
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => new bootstrap.Tooltip(el));
+async function api(url, options = {}) {
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Request failed');
+  return data;
 }
 
 function switchSection(section) {
@@ -49,240 +14,213 @@ function switchSection(section) {
   document.getElementById(`section-${section}`).classList.add('active');
 }
 
-function renderApiLinks() {
-  const body = document.getElementById('apiLinksBody');
-  body.innerHTML = API_LINKS.map(([name, url]) => `<tr><td>${name}</td><td><a href="${url}" target="_blank">${url}</a></td></tr>`).join('');
-}
-
-function renderKpis() {
-  const revenue = state.orders.reduce((s, o) => s + o.total, 0).toFixed(2);
-  const profit = (revenue * 0.28).toFixed(2);
-  const cards = [
-    ['Total Users', state.users.length],
-    ['Total Products', state.products.length],
-    ['Total Orders', state.orders.length],
-    ['Revenue', `$${revenue}`],
-    ['Estimated Profit', `$${profit}`],
-    ['Total Notifications', state.notifications.length]
-  ];
-  document.getElementById('kpiCards').innerHTML = cards
-    .map(([k, v]) => `<div class="col-md-6 col-xl-4"><div class="kpi-card"><div>${k}</div><div class="kpi-number">${v}</div></div></div>`)
-    .join('');
-}
-
-function renderProducts() {
-  const body = document.getElementById('productsBody');
-  body.innerHTML = state.products
-    .map(
-      (p) => `<tr>
-<td><img src="${p.img}" class="product-thumb"/></td><td>${p.name}</td><td>${p.category}</td><td>$${Number(p.price).toFixed(2)}</td><td>${p.rating ?? '-'}</td>
-<td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('product', '${p.id}')">Delete</button></td></tr>`
-    )
-    .join('');
-}
-
-function renderUsers() {
-  document.getElementById('usersBody').innerHTML = state.users
-    .map(
-      (u) => `<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td><span class="badge-soft">${u.status}</span></td><td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('user', '${u.id}')">Delete</button></td></tr>`
-    )
-    .join('');
-}
-
-function renderOrders() {
-  document.getElementById('ordersBody').innerHTML = state.orders
-    .map(
-      (o) => `<tr><td>${o.id}</td><td>${o.customer}</td><td>$${o.total.toFixed(2)}</td><td><span class="badge-soft">${o.status}</span></td><td>${o.track}</td><td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('order', '${o.id}')">Delete</button></td></tr>`
-    )
-    .join('');
-}
-
-function renderCoupons() {
-  document.getElementById('couponsBody').innerHTML = state.coupons
-    .map(
-      (c) => `<tr><td>${c.code}</td><td>${c.discount}%</td><td>${c.expiry}</td><td><span class="badge-soft">${c.status}</span></td><td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('coupon', '${c.id}')">Delete</button></td></tr>`
-    )
-    .join('');
-}
-
-function renderNotifications() {
-  document.getElementById('notificationsBody').innerHTML = state.notifications
-    .map(
-      (n) => `<tr><td>${n.type}</td><td>${n.to}</td><td>${n.title}</td><td>${n.message}</td><td>${n.date}</td><td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('notification', '${n.id}')">Delete</button></td></tr>`
-    )
-    .join('');
-}
-
-function renderLogs() {
-  document.getElementById('logsList').innerHTML = state.logs.map((l) => `<li>${l}</li>`).join('');
-}
-
-function openModal(title, bodyHtml, onSubmit) {
+function openModal(title, body, onSubmit) {
   document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalBody').innerHTML = body;
   const modal = new bootstrap.Modal(document.getElementById('genericModal'));
   modal.show();
-  const form = document.getElementById('modalForm');
-  if (form) {
-    form.addEventListener('submit', (e) => {
+  const f = document.getElementById('modalForm');
+  if (f) {
+    f.addEventListener('submit', async (e) => {
       e.preventDefault();
-      onSubmit(new FormData(form));
+      await onSubmit(new FormData(f));
       modal.hide();
-      rerenderAll();
+      await loadAll();
     });
   }
+  const prevInput = document.getElementById('imageUrlPreviewInput');
+  const prevImg = document.getElementById('imagePreview');
+  if (prevInput && prevImg) prevInput.addEventListener('input', () => (prevImg.src = prevInput.value || 'https://via.placeholder.com/90?text=Preview'));
 }
 
-function setupCrudButtons() {
-  document.getElementById('addUserBtn').onclick = () =>
-    openModal(
-      'Add User',
-      `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="name" placeholder="Name" required><input class="form-control" name="email" placeholder="Email" required><select class="form-select" name="role"><option>customer</option><option>delivery</option><option>admin</option></select><button class="btn btn-danger">Create</button></form>`,
-      (fd) => {
-        state.users.push({ id: Date.now(), name: fd.get('name'), email: fd.get('email'), role: fd.get('role'), status: 'active' });
-        logAction(`User created: ${fd.get('email')}`);
-      }
-    );
-
-  document.getElementById('addOrderBtn').onclick = () =>
-    openModal(
-      'Add Order',
-      `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="customer" placeholder="Customer" required><input class="form-control" type="number" step="0.01" name="total" placeholder="Total" required><select class="form-select" name="status"><option>processing</option><option>delivered</option><option>cancelled</option></select><input class="form-control" name="track" placeholder="Tracking text"><button class="btn btn-danger">Create</button></form>`,
-      (fd) => {
-        state.orders.push({ id: `#ORD-${Date.now()}`, customer: fd.get('customer'), total: Number(fd.get('total')), status: fd.get('status'), track: fd.get('track') || 'New order' });
-        logAction(`Order created for ${fd.get('customer')}`);
-      }
-    );
-
-  document.getElementById('addCouponBtn').onclick = () =>
-    openModal(
-      'Add Coupon',
-      `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="code" placeholder="Coupon code" required><input class="form-control" type="number" name="discount" placeholder="Discount %" required><input class="form-control" type="date" name="expiry" required><button class="btn btn-danger">Create</button></form>`,
-      (fd) => {
-        state.coupons.push({ id: Date.now(), code: fd.get('code'), discount: Number(fd.get('discount')), expiry: fd.get('expiry'), status: 'active' });
-        logAction(`Coupon created: ${fd.get('code')}`);
-      }
-    );
-
-  document.getElementById('addProductBtn').onclick = () =>
-    openModal(
-      'Add Product',
-      `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="name" placeholder="Food name" required><input class="form-control" name="category" placeholder="Category" required><input class="form-control" type="number" step="0.01" name="price" placeholder="Price" required><input class="form-control" name="img" placeholder="Image URL" required><button class="btn btn-danger">Create</button></form>`,
-      (fd) => {
-        state.products.push({ id: Date.now(), name: fd.get('name'), category: fd.get('category'), price: fd.get('price'), img: fd.get('img'), rating: 4.5 });
-        logAction(`Product created: ${fd.get('name')}`);
-      }
-    );
-
-  document.getElementById('sendNotificationBtn').onclick = () => {
-    const userOptions = state.users.map((u) => `<option value="${u.email}">${u.name} (${u.email})</option>`).join('');
-    openModal(
-      'Send Notification',
-      `<form id="modalForm" class="vstack gap-2">
-<select class="form-select" name="type">
-<option value="system">system (All Users)</option>
-<option value="delivery">delivery (Specific user)</option>
-<option value="order_update">order update (Specific user)</option>
-<option value="promotion">promotion</option>
-</select>
-<select class="form-select" name="to"><option value="all">All Users</option>${userOptions}</select>
-<input class="form-control" name="title" placeholder="Title" required>
-<textarea class="form-control" name="message" rows="3" placeholder="Message" required></textarea>
-<button class="btn btn-danger">Send</button></form>`,
-      (fd) => {
-        const type = fd.get('type');
-        const to = type === 'system' ? 'All Users' : fd.get('to');
-        state.notifications.unshift({ id: Date.now(), type, to, title: fd.get('title'), message: fd.get('message'), date: new Date().toLocaleDateString() });
-        logAction(`Notification sent [${type}] to ${to}`);
-      }
-    );
-  };
+async function loadAdminMeta() {
+  const me = await api('/api/admin/me');
+  document.getElementById('adminMeta').innerHTML = `${me.name}<br><small>${me.email}</small>`;
 }
 
-window.deleteItem = function deleteItem(type, id) {
-  const map = { product: 'products', user: 'users', order: 'orders', coupon: 'coupons', notification: 'notifications' };
-  const key = map[type];
-  state[key] = state[key].filter((x) => String(x.id) !== String(id));
-  logAction(`${type} deleted: ${id}`);
-  rerenderAll();
+async function renderCategories() {
+  const rows = await api('/api/admin/categories');
+  document.getElementById('categoriesBody').innerHTML = rows
+    .map(
+      (c) => `<tr><td><img src="${c.imageUrl || 'https://via.placeholder.com/52'}" class="product-thumb"></td><td>${c.nameEn}</td><td>${c.nameAr}</td><td>${c.isActive ? 'Active' : 'Not active'}</td><td>
+<button class="btn btn-sm btn-outline-primary" onclick="editCategory('${c._id}','${encodeURIComponent(c.nameEn)}','${encodeURIComponent(c.nameAr)}','${encodeURIComponent(c.imageUrl || '')}',${c.isActive})">Update</button>
+<button class="btn btn-sm btn-outline-danger" onclick="del('/api/admin/categories/${c._id}')">Delete</button></td></tr>`
+    )
+    .join('');
+}
+
+window.editCategory = function editCategory(id, nameEn, nameAr, imageUrl, isActive) {
+  openModal(
+    'Update Category',
+    `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="nameEn" value="${decodeURIComponent(nameEn)}" required><input class="form-control" name="nameAr" value="${decodeURIComponent(nameAr)}" required><input id="imageUrlPreviewInput" class="form-control" name="imageUrl" value="${decodeURIComponent(imageUrl)}"><img id="imagePreview" class="preview-img" src="${decodeURIComponent(imageUrl) || 'https://via.placeholder.com/90?text=Preview'}"><select class="form-select" name="isActive"><option value="true" ${isActive ? 'selected' : ''}>Active</option><option value="false" ${!isActive ? 'selected' : ''}>Not active</option></select><button class="btn btn-danger">Update</button></form>`,
+    async (fd) => {
+      await api(`/api/admin/categories/${id}`, { method: 'PUT', body: JSON.stringify({ nameEn: fd.get('nameEn'), nameAr: fd.get('nameAr'), imageUrl: fd.get('imageUrl'), isActive: fd.get('isActive') === 'true' }) });
+    }
+  );
 };
 
-async function loadProductsFromApis() {
-  const targets = API_LINKS.slice(0, 10);
-  const samples = [];
-  for (const [name, url] of targets) {
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      if (Array.isArray(data) && data[0]) {
-        samples.push({
-          id: `${name}-${Date.now()}-${Math.random()}`,
-          name: data[0].name || data[0].dsc || name,
-          category: name,
-          price: data[0].price || 20,
-          img: data[0].img || 'https://via.placeholder.com/70',
-          rating: data[0].rate || 4.2
-        });
-      }
-    } catch {
-      logAction(`Failed to load ${url}`);
+async function renderProducts() {
+  const rows = await api('/api/admin/products');
+  document.getElementById('productsBody').innerHTML = rows
+    .map(
+      (p) => `<tr><td><img src="${p.imageUrl || 'https://via.placeholder.com/52'}" class="product-thumb"> ${p.name}</td><td>${p.category?.nameEn || '-'}</td><td>$${Number(p.price || 0).toFixed(2)}</td><td>${p.inStock ? 'In Stock' : 'Out'}</td><td>${p.onSale ? 'On Sale' : 'Normal'}</td><td><button class="btn btn-sm btn-outline-primary" onclick="editProduct('${p._id}')">Update</button> <button class="btn btn-sm btn-outline-danger" onclick="del('/api/admin/products/${p._id}')">Delete</button></td></tr>`
+    )
+    .join('');
+}
+
+window.editProduct = async function editProduct(id) {
+  const p = (await api('/api/admin/products')).find((x) => x._id === id);
+  const categories = await api('/api/admin/categories');
+  const opts = categories.map((c) => `<option value="${c._id}" ${String(p.category?._id) === String(c._id) ? 'selected' : ''}>${c.nameEn}</option>`).join('');
+  openModal(
+    'Update Product',
+    `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="name" value="${p.name || ''}" required><textarea class="form-control" name="description">${p.description || ''}</textarea><div class="row g-2"><div class="col"><input class="form-control" name="price" type="number" step="0.01" value="${p.price || 0}" required></div><div class="col"><input class="form-control" name="originalPrice" type="number" step="0.01" value="${p.originalPrice || 0}"></div></div><select class="form-select" name="category">${opts}</select><input id="imageUrlPreviewInput" class="form-control" name="imageUrl" value="${p.imageUrl || ''}"><img id="imagePreview" class="preview-img" src="${p.imageUrl || 'https://via.placeholder.com/90?text=Preview'}"><div class="row"><div class="col"><label><input type="checkbox" name="inStock" ${p.inStock ? 'checked' : ''}> In Stock</label></div><div class="col"><label><input type="checkbox" name="featured" ${p.featured ? 'checked' : ''}> Featured</label></div><div class="col"><label><input type="checkbox" name="onSale" ${p.onSale ? 'checked' : ''}> On Sale</label></div></div><button class="btn btn-danger">Update</button></form>`,
+    async (fd) => {
+      await api(`/api/admin/products/${id}`, { method: 'PUT', body: JSON.stringify({ name: fd.get('name'), description: fd.get('description'), price: Number(fd.get('price')), originalPrice: Number(fd.get('originalPrice')), category: fd.get('category'), imageUrl: fd.get('imageUrl'), inStock: fd.get('inStock') === 'on', featured: fd.get('featured') === 'on', onSale: fd.get('onSale') === 'on' }) });
     }
-  }
-  state.products = samples;
-  logAction(`Loaded ${samples.length} products from food APIs`);
-}
+  );
+};
 
-function rerenderAll() {
-  renderKpis();
-  renderProducts();
-  renderUsers();
-  renderOrders();
-  renderCoupons();
-  renderNotifications();
-  renderLogs();
+async function renderOrders() {
+  const rows = await api('/api/admin/orders');
+  document.getElementById('ordersBody').innerHTML = rows
+    .map((o) => `<tr><td>${o.orderNo || o._id.slice(-8)}</td><td>${o.customerName}<br><small>${o.customerEmail || ''}</small></td><td>${new Date(o.createdAt).toLocaleDateString()}</td><td>${(o.items || []).length}</td><td>$${Number(o.total || 0).toFixed(2)}</td><td>${o.status}</td><td><select onchange="updOrderStatus('${o._id}', this.value)" class="form-select form-select-sm"><option ${o.status === 'processing' ? 'selected' : ''}>processing</option><option ${o.status === 'shipping' ? 'selected' : ''}>shipping</option><option ${o.status === 'delivered' ? 'selected' : ''}>delivered</option><option ${o.status === 'cancelled' ? 'selected' : ''}>cancelled</option></select><button class="btn btn-sm btn-outline-dark mt-1" onclick="viewOrder('${o._id}')">View</button></td></tr>`)
+    .join('');
 }
+window.updOrderStatus = async (id, status) => {
+  await api(`/api/admin/orders/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  await loadAll();
+};
+window.viewOrder = async (id) => {
+  const o = (await api('/api/admin/orders')).find((x) => x._id === id);
+  const items = (o.items || []).map((i) => `<li>${i.name} x${i.qty} - $${i.price}</li>`).join('');
+  openModal('Order Details', `<div><b>Customer:</b> ${o.customerName} (${o.customerEmail})<br><b>Address:</b> ${o.shippingAddress || '-'}<br><b>Table Reservation:</b> ${o.tableReservation ? 'Yes' : 'No'}<ul>${items}</ul><b>Total:</b> $${o.total}</div>`, async () => {});
+};
 
-function setupInstallPrompt() {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    document.getElementById('installBtn').style.display = 'block';
-    logAction('Install prompt captured.');
+async function renderUsers() {
+  const rows = await api('/api/admin/users');
+  document.getElementById('usersBody').innerHTML = rows
+    .map((u) => `<tr><td>${u.name}<br><small>${u.email}</small></td><td>${u.role}</td><td>${new Date(u.joined).toLocaleDateString()}</td><td>${u.orders}</td><td>$${u.totalSpent.toFixed(2)}</td><td><button class="btn btn-sm btn-outline-primary" onclick="updUserRole('${u._id}','${u.role === 'admin' ? 'user' : 'admin'}')">Make ${u.role === 'admin' ? 'User' : 'Admin'}</button> <button class="btn btn-sm btn-outline-secondary" onclick="sendEmail('${u._id}')">Send Email</button></td></tr>`)
+    .join('');
+}
+window.updUserRole = async (id, role) => {
+  await api(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify({ role }) });
+  await loadAll();
+};
+window.sendEmail = async (id) => {
+  const subject = prompt('Email subject');
+  const message = prompt('Email message');
+  await api(`/api/admin/users/${id}/send-email`, { method: 'POST', body: JSON.stringify({ subject, message }) });
+  alert('Email action logged in system logs');
+};
+
+async function renderCoupons() {
+  const rows = await api('/api/admin/coupons');
+  document.getElementById('couponsBody').innerHTML = rows
+    .map((c) => `<tr><td>${c.code}</td><td>${c.discountType} ${c.discountValue}</td><td>${c.usageCount}/${c.maxUses}</td><td>${new Date(c.validFrom).toLocaleDateString()} - ${new Date(c.validUntil).toLocaleDateString()}</td><td>${c.isActive ? 'Active' : 'Inactive'}</td><td><button class="btn btn-sm btn-outline-primary" onclick="editCoupon('${c._id}')">Update</button> <button class="btn btn-sm btn-outline-danger" onclick="del('/api/admin/coupons/${c._id}')">Delete</button></td></tr>`)
+    .join('');
+}
+window.editCoupon = async (id) => {
+  const c = (await api('/api/admin/coupons')).find((x) => x._id === id);
+  openModal('Update Coupon', `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="code" value="${c.code}"><select class="form-select" name="discountType"><option value="percentage" ${c.discountType === 'percentage' ? 'selected' : ''}>Percentage</option><option value="fixed" ${c.discountType === 'fixed' ? 'selected' : ''}>Fixed</option></select><input class="form-control" name="discountValue" type="number" value="${c.discountValue}"><input class="form-control" name="minOrderAmount" type="number" value="${c.minOrderAmount || 0}"><input class="form-control" name="maxUses" type="number" value="${c.maxUses || 0}"><input class="form-control" name="validFrom" type="date" value="${new Date(c.validFrom).toISOString().slice(0, 10)}"><input class="form-control" name="validUntil" type="date" value="${new Date(c.validUntil).toISOString().slice(0, 10)}"><select class="form-select" name="isActive"><option value="true" ${c.isActive ? 'selected' : ''}>Active</option><option value="false" ${!c.isActive ? 'selected' : ''}>Inactive</option></select><button class="btn btn-danger">Update</button></form>`, async (fd) => {
+    await api(`/api/admin/coupons/${id}`, { method: 'PUT', body: JSON.stringify({ code: fd.get('code'), discountType: fd.get('discountType'), discountValue: Number(fd.get('discountValue')), minOrderAmount: Number(fd.get('minOrderAmount')), maxUses: Number(fd.get('maxUses')), validFrom: fd.get('validFrom'), validUntil: fd.get('validUntil'), isActive: fd.get('isActive') === 'true' }) });
   });
+};
 
-  document.getElementById('installBtn').addEventListener('click', async () => {
-    if (!deferredPrompt) return alert('Install prompt not available yet. Open via HTTPS/localhost and interact with app.');
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
+async function renderNotifications() {
+  const rows = await api('/api/admin/notifications');
+  document.getElementById('notifsBody').innerHTML = rows.map((n) => `<tr><td>${n.type}</td><td>${n.user?.email || 'All Users'}</td><td>${n.title}</td><td>${n.message}</td><td>${new Date(n.createdAt).toLocaleDateString()}</td><td><button class="btn btn-sm btn-outline-primary" onclick="editNotif('${n._id}')">Update</button> <button class="btn btn-sm btn-outline-danger" onclick="del('/api/admin/notifications/${n._id}')">Delete</button></td></tr>`).join('');
+}
+window.editNotif = async (id) => {
+  const n = (await api('/api/admin/notifications')).find((x) => x._id === id);
+  const users = await api('/api/admin/users');
+  const opts = `<option value="">All Users</option>${users.map((u) => `<option value="${u._id}" ${String(n.user?._id) === String(u._id) ? 'selected' : ''}>${u.email}</option>`).join('')}`;
+  openModal('Update Notification', `<form id="modalForm" class="vstack gap-2"><select class="form-select" name="type"><option value="promotion" ${n.type === 'promotion' ? 'selected' : ''}>promotion</option><option value="system" ${n.type === 'system' ? 'selected' : ''}>system</option><option value="delivery" ${n.type === 'delivery' ? 'selected' : ''}>delivery</option><option value="order_update" ${n.type === 'order_update' ? 'selected' : ''}>order update</option></select><select class="form-select" name="user">${opts}</select><input class="form-control" name="title" value="${n.title}"><textarea class="form-control" name="message">${n.message}</textarea><input class="form-control" name="actionLink" value="${n.actionLink || ''}" placeholder="Action link"><button class="btn btn-danger">Update</button></form>`, async (fd) => {
+    await api(`/api/admin/notifications/${id}`, { method: 'PUT', body: JSON.stringify({ type: fd.get('type'), user: fd.get('user') || null, title: fd.get('title'), message: fd.get('message'), actionLink: fd.get('actionLink') }) });
   });
+};
+
+async function renderLogs() {
+  const rows = await api('/api/admin/logs');
+  document.getElementById('logsBody').innerHTML = rows.map((l) => `<li>[${new Date(l.createdAt).toLocaleString()}] ${l.action}</li>`).join('');
 }
 
-function setupServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(() => logAction('Service worker registered'));
-  }
+async function renderAnalytics() {
+  const range = document.getElementById('rangeSelect').value;
+  const a = await api(`/api/admin/analytics?range=${range}`);
+  const cards = [
+    ['Total Revenue', `$${a.totalRevenue.toFixed(2)}`],
+    ['Total Orders', a.totalOrders],
+    ['Avg Order Value', `$${a.avgOrderValue.toFixed(2)}`],
+    ['Total Users', a.totalUsers]
+  ];
+  document.getElementById('kpiCards').innerHTML = cards.map(([k, v]) => `<div class="col-md-6 col-xl-3"><div class="kpi-card"><div>${k}</div><div class="kpi-number">${v}</div></div></div>`).join('');
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('barChart'), { type: 'bar', data: { labels: a.revenueSeries.map((x) => x.label), datasets: [{ label: 'Revenue', data: a.revenueSeries.map((x) => x.revenue), backgroundColor: '#ff6b6b' }] } });
+  if (pieChart) pieChart.destroy();
+  pieChart = new Chart(document.getElementById('pieChart'), { type: 'pie', data: { labels: a.byStatus.map((x) => x.status), datasets: [{ data: a.byStatus.map((x) => x.count), backgroundColor: ['#60a5fa', '#a78bfa', '#34d399', '#f87171'] }] } });
+  document.getElementById('topSelling').innerHTML = a.topSelling.map((t) => `<li>${t._id} - Sold ${t.sold} - Revenue $${Number(t.revenue).toFixed(2)}</li>`).join('');
+}
+
+window.del = async function del(url) {
+  if (!confirm('Delete item?')) return;
+  await api(url, { method: 'DELETE' });
+  await loadAll();
+};
+
+async function loadAll() {
+  await Promise.all([renderCategories(), renderProducts(), renderOrders(), renderUsers(), renderCoupons(), renderNotifications(), renderLogs(), renderAnalytics()]);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  initTooltips();
-  renderApiLinks();
-  setupCrudButtons();
-  setupInstallPrompt();
-  setupServiceWorker();
   document.getElementById('menuNav').addEventListener('click', (e) => {
     const btn = e.target.closest('.menu-item');
-    if (!btn) return;
-    switchSection(btn.dataset.section);
+    if (btn) switchSection(btn.dataset.section);
+  });
+  document.getElementById('rangeSelect').addEventListener('change', renderAnalytics);
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await api('/api/logout', { method: 'POST' });
+    location.href = '/login.html';
   });
 
-  await loadProductsFromApis();
-  state.notifications.push(
-    { id: 1, type: 'system', to: 'All Users', title: 'Welcome', message: 'Welcome to restaurant app', date: new Date().toLocaleDateString() },
-    { id: 2, type: 'delivery', to: 'yassahanna5@gmail.com', title: 'Delivery Out', message: 'Driver is near your address', date: new Date().toLocaleDateString() },
-    { id: 3, type: 'order_update', to: 'dr.antonhanna2005@gmail.com', title: 'Order Updated', message: 'Order moved to preparing stage', date: new Date().toLocaleDateString() },
-    { id: 4, type: 'promotion', to: 'All Users', title: 'Promotion', message: '50% off on best food section', date: new Date().toLocaleDateString() }
-  );
-  logAction('Dashboard initialized');
-  rerenderAll();
+  document.getElementById('seedBtn').addEventListener('click', async () => {
+    await api('/api/admin/seed-food-data', { method: 'POST' });
+    await loadAll();
+  });
+
+  document.getElementById('addCategoryBtn').addEventListener('click', () => {
+    openModal('Add New Category', `<form id="modalForm" class="vstack gap-2"><label>Name (English)</label><input class="form-control" name="nameEn" placeholder="e.g. steaks" required><label>Name (Arabic)</label><input class="form-control" name="nameAr" placeholder="e.g. مشويات" required><label>Image URL</label><input id="imageUrlPreviewInput" class="form-control" name="imageUrl" placeholder="https://..." required><img id="imagePreview" class="preview-img" src="https://via.placeholder.com/90?text=Preview"><select class="form-select" name="isActive"><option value="true">Active</option><option value="false">Not active</option></select><button class="btn btn-danger">Create</button></form>`, async (fd) => {
+      await api('/api/admin/categories', { method: 'POST', body: JSON.stringify({ nameEn: fd.get('nameEn'), nameAr: fd.get('nameAr'), imageUrl: fd.get('imageUrl'), isActive: fd.get('isActive') === 'true' }) });
+    });
+  });
+
+  document.getElementById('addProductBtn').addEventListener('click', async () => {
+    const categories = await api('/api/admin/categories');
+    const opts = categories.map((c) => `<option value="${c._id}">${c.nameEn}</option>`).join('');
+    openModal('Add New Product', `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="name" placeholder="Product Name" required><textarea class="form-control" name="description" placeholder="Description"></textarea><div class="row g-2"><div class="col"><input class="form-control" type="number" step="0.01" name="price" placeholder="Price ($)" required></div><div class="col"><input class="form-control" type="number" step="0.01" name="originalPrice" placeholder="Original Price ($)"></div></div><label>Category</label><select class="form-select" name="category">${opts}</select><label>Image URL</label><input id="imageUrlPreviewInput" class="form-control" name="imageUrl" placeholder="https://..." required><img id="imagePreview" class="preview-img" src="https://via.placeholder.com/90?text=Preview"><div class="row"><div class="col"><label><input type="checkbox" name="inStock" checked> In Stock</label></div><div class="col"><label><input type="checkbox" name="featured"> Featured</label></div><div class="col"><label><input type="checkbox" name="onSale"> On Sale</label></div></div><button class="btn btn-danger">Create</button></form>`, async (fd) => {
+      await api('/api/admin/products', { method: 'POST', body: JSON.stringify({ name: fd.get('name'), description: fd.get('description'), price: Number(fd.get('price')), originalPrice: Number(fd.get('originalPrice')), category: fd.get('category'), imageUrl: fd.get('imageUrl'), inStock: fd.get('inStock') === 'on', featured: fd.get('featured') === 'on', onSale: fd.get('onSale') === 'on' }) });
+    });
+  });
+
+  document.getElementById('addCouponBtn').addEventListener('click', () => {
+    openModal('Create Promo Code', `<form id="modalForm" class="vstack gap-2"><input class="form-control" name="code" placeholder="Promo Code" required><select class="form-select" name="discountType"><option value="percentage">Percentage (%)</option><option value="fixed">Fixed</option></select><input class="form-control" name="discountValue" type="number" value="20" required><input class="form-control" name="minOrderAmount" type="number" value="50" required><input class="form-control" name="maxUses" type="number" value="100" required><input class="form-control" name="validFrom" type="date" required><input class="form-control" name="validUntil" type="date" required><select class="form-select" name="isActive"><option value="true">Active</option><option value="false">Not active</option></select><div class="d-flex gap-2 justify-content-end"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-danger">Create</button></div></form>`, async (fd) => {
+      await api('/api/admin/coupons', { method: 'POST', body: JSON.stringify({ code: fd.get('code'), discountType: fd.get('discountType'), discountValue: Number(fd.get('discountValue')), minOrderAmount: Number(fd.get('minOrderAmount')), maxUses: Number(fd.get('maxUses')), validFrom: fd.get('validFrom'), validUntil: fd.get('validUntil'), isActive: fd.get('isActive') === 'true' }) });
+    });
+  });
+
+  document.getElementById('addNotifBtn').addEventListener('click', async () => {
+    const users = await api('/api/admin/users');
+    const opts = `<option value="">All Users</option>${users.map((u) => `<option value="${u._id}">${u.email}</option>`).join('')}`;
+    openModal('Send Notification', `<form id="modalForm" class="vstack gap-2"><label>Type</label><select class="form-select" name="type"><option value="promotion">Promotion</option><option value="system">System</option><option value="delivery">Delivery</option><option value="order_update">Order Update</option></select><label>Send to User</label><select class="form-select" name="user">${opts}</select><input class="form-control" name="title" placeholder="Flash Sale Alert! 🔥" required><textarea class="form-control" name="message" placeholder="Summer collection is now 50% off!" required></textarea><input class="form-control" name="actionLink" placeholder="Action Link (optional)"><div class="d-flex gap-2 justify-content-end"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-danger">Send</button></div></form>`, async (fd) => {
+      await api('/api/admin/notifications', { method: 'POST', body: JSON.stringify({ type: fd.get('type'), user: fd.get('user') || null, title: fd.get('title'), message: fd.get('message'), actionLink: fd.get('actionLink') }) });
+    });
+  });
+
+  try {
+    await loadAdminMeta();
+    await loadAll();
+  } catch (e) {
+    alert(`${e.message}. Please login as admin first.`);
+    location.href = '/login.html';
+  }
 });
