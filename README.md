@@ -4,29 +4,22 @@
 - Email: `Admin2030@gmail.com`
 - Password: `Admin2030KingFood`
 
-## Mongo
+## Mongo + Gmail SMTP
 Set `.env`:
 ```env
 PORT=3000
 MONGO_URI=mongodb+srv://drantonhanna2005_db_user:g9h6ArdIDaWQBSRo@cluster0.iygqaqj.mongodb.net/
 SESSION_SECRET=change_me_to_a_long_random_secret
+SMTP_USER=yourgmail@gmail.com
+SMTP_PASS=your_gmail_app_password
 ```
+
+> For real Gmail inbox delivery, use Gmail App Password in `SMTP_PASS`.
 
 ## Features
-- Register/Login/Forgot/Reset with password show/hide eye icon.
-- Admin dashboard with MongoDB CRUD for:
-  - categories
-  - products
-  - orders (status/update/view only)
-  - users (update role/send email log)
-  - coupons
-  - notifications
-  - logs
-  - analytics from real Mongo data.
-- Import 15 food categories/products from provided APIs to MongoDB.
-
-## Run
-```bash
-npm install
-npm start
-```
+- Password eye toggle in login/register/forgot-reset pages.
+- Register blocks duplicated email and shows red "already exist" warning.
+- Fully responsive pages for mobile/tablet/desktop.
+- Admin dashboard with hamburger menu on phone.
+- MongoDB CRUD for categories/products/orders/users/coupons/notifications/logs/analytics.
+- Import 15 food API categories and products into MongoDB.

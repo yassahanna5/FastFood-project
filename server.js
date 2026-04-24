@@ -3,6 +3,7 @@ const express = require('express');
 const session = require('express-session');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -189,7 +190,7 @@ app.post('/api/register', async (req, res) => {
     if (!firstName || !lastName || !email || !password || !repeatPassword) return res.status(400).json({ message: 'All fields required' });
     if (!passwordRule.test(password)) return res.status(400).json({ message: 'Weak password' });
     if (password !== repeatPassword) return res.status(400).json({ message: 'Passwords do not match' });
-    if (await User.findOne({ email: email.toLowerCase() })) return res.status(409).json({ message: 'Email already exists' });
+    if (await User.findOne({ email: email.toLowerCase() })) return res.status(409).json({ message: 'already exist' });
 
     await User.create({ firstName, lastName, email, passwordHash: await bcrypt.hash(password, 10), role: 'user' });
     res.status(201).json({ message: 'Account created successfully' });
@@ -351,8 +352,30 @@ app.put('/api/admin/users/:id', adminOnly, async (req, res) => {
 });
 app.post('/api/admin/users/:id/send-email', adminOnly, async (req, res) => {
   const user = await User.findById(req.params.id);
-  await writeLog(`Email queued to ${user?.email}: ${req.body.subject || 'No subject'}`);
-  res.json({ message: 'Demo email logged in system logs (no SMTP configured).' });
+  if (!user?.email) return res.status(404).json({ message: 'User email not found' });
+
+  const { subject, message } = req.body;
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
+  if (!smtpUser || !smtpPass) {
+    return res.status(400).json({
+      message: 'SMTP credentials missing. Add SMTP_USER + SMTP_PASS (or GMAIL_USER + GMAIL_APP_PASSWORD) in .env'
+    });
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: smtpUser, pass: smtpPass }
+  });
+
+  await transporter.sendMail({
+    from: smtpUser,
+    to: user.email,
+    subject: subject || 'Message from King Food Admin',
+    text: message || ''
+  });
+  await writeLog(`Email sent to ${user.email}: ${subject || 'No subject'}`);
+  res.json({ message: `Email sent successfully to ${user.email}` });
 });
 
 app.get('/api/admin/orders', adminOnly, async (_req, res) => res.json(await Order.find().sort({ createdAt: -1 })));

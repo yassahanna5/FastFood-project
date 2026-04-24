@@ -110,8 +110,8 @@ window.updUserRole = async (id, role) => {
 window.sendEmail = async (id) => {
   const subject = prompt('Email subject');
   const message = prompt('Email message');
-  await api(`/api/admin/users/${id}/send-email`, { method: 'POST', body: JSON.stringify({ subject, message }) });
-  alert('Email action logged in system logs');
+  const result = await api(`/api/admin/users/${id}/send-email`, { method: 'POST', body: JSON.stringify({ subject, message }) });
+  alert(result.message);
 };
 
 async function renderCoupons() {
@@ -175,9 +175,16 @@ async function loadAll() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  const menuToggle = document.getElementById('menuToggle');
+  if (menuToggle) {
+    menuToggle.addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
+  }
   document.getElementById('menuNav').addEventListener('click', (e) => {
     const btn = e.target.closest('.menu-item');
-    if (btn) switchSection(btn.dataset.section);
+    if (btn) {
+      switchSection(btn.dataset.section);
+      document.querySelector('.sidebar').classList.remove('open');
+    }
   });
   document.getElementById('rangeSelect').addEventListener('change', renderAnalytics);
   document.getElementById('logoutBtn').addEventListener('click', async () => {

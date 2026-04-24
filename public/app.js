@@ -54,12 +54,14 @@ function setupRegister() {
   const password = document.getElementById('password');
   const repeatPassword = document.getElementById('repeatPassword');
   const matchMsg = document.getElementById('matchMsg');
+  const emailExistsMsg = document.getElementById('emailExistsMsg');
   password.addEventListener('input', () => updateStrengthUI(password.value));
   repeatPassword.addEventListener('input', () => {
     matchMsg.textContent = repeatPassword.value && repeatPassword.value !== password.value ? 'Passwords do not match.' : '';
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (emailExistsMsg) emailExistsMsg.textContent = '';
     const payload = {
       firstName: document.getElementById('firstName').value.trim(),
       lastName: document.getElementById('lastName').value.trim(),
@@ -74,6 +76,9 @@ function setupRegister() {
       showToast('Registered successfully');
       setTimeout(() => (location.href = '/login.html'), 900);
     } catch (e2) {
+      if (String(e2.message).toLowerCase().includes('already exist')) {
+        if (emailExistsMsg) emailExistsMsg.textContent = 'already exist';
+      }
       showToast(e2.message, 'danger');
     }
   });
