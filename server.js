@@ -1,0 +1,421 @@
+const path = require('path');
+const express = require('express');
+const session = require('express-session');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const dotenv = require('dotenv');
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI;
+const ADMIN_EMAIL = 'admin2030@gmail.com';
+const ADMIN_PASSWORD = 'Admin2030KingFood';
+
+if (!MONGO_URI) throw new Error('MONGO_URI is required.');
+
+mongoose.connect(MONGO_URI).then(() => console.log('Mongo connected')).catch((e) => console.error(e.message));
+
+const userSchema = new mongoose.Schema(
+  {
+    firstName: String,
+    lastName: String,
+    email: { type: String, required: true, unique: true, lowercase: true },
+    passwordHash: String,
+    role: { type: String, enum: ['user', 'admin', 'delivery'], default: 'user' },
+    isActive: { type: Boolean, default: true },
+    resetCodeHash: String,
+    resetCodeExpiresAt: Date
+  },
+  { timestamps: true }
+);
+
+const categorySchema = new mongoose.Schema(
+  {
+    nameEn: { type: String, required: true },
+    nameAr: { type: String, required: true },
+    imageUrl: String,
+    apiUrl: String,
+    isActive: { type: Boolean, default: true }
+  },
+  { timestamps: true }
+);
+
+const productSchema = new mongoose.Schema(
+  {
+    name: String,
+    description: String,
+    price: Number,
+    originalPrice: Number,
+    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+    imageUrl: String,
+    inStock: { type: Boolean, default: true },
+    featured: { type: Boolean, default: false },
+    onSale: { type: Boolean, default: false },
+    rating: Number,
+    reviewsCount: Number,
+    sourceApi: String
+  },
+  { timestamps: true }
+);
+
+const orderSchema = new mongoose.Schema(
+  {
+    orderNo: { type: String, unique: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    customerName: String,
+    customerEmail: String,
+    shippingAddress: String,
+    items: [
+      {
+        product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+        name: String,
+        qty: Number,
+        price: Number
+      }
+    ],
+    tableReservation: { type: Boolean, default: false },
+    total: Number,
+    status: { type: String, enum: ['processing', 'shipping', 'delivered', 'cancelled'], default: 'processing' }
+  },
+  { timestamps: true }
+);
+
+const couponSchema = new mongoose.Schema(
+  {
+    code: { type: String, unique: true },
+    discountType: { type: String, enum: ['percentage', 'fixed'], default: 'percentage' },
+    discountValue: Number,
+    minOrderAmount: Number,
+    maxUses: Number,
+    usageCount: { type: Number, default: 0 },
+    validFrom: Date,
+    validUntil: Date,
+    isActive: { type: Boolean, default: true }
+  },
+  { timestamps: true }
+);
+
+const notificationSchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ['system', 'promotion', 'delivery', 'order_update'] },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    title: String,
+    message: String,
+    actionLink: String
+  },
+  { timestamps: true }
+);
+
+const logSchema = new mongoose.Schema({ action: String }, { timestamps: true });
+
+const User = mongoose.model('User', userSchema);
+const Category = mongoose.model('Category', categorySchema);
+const Product = mongoose.model('Product', productSchema);
+const Order = mongoose.model('Order', orderSchema);
+const Coupon = mongoose.model('Coupon', couponSchema);
+const Notification = mongoose.model('Notification', notificationSchema);
+const AdminLog = mongoose.model('AdminLog', logSchema);
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'dev_secret_change_me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { httpOnly: true, maxAge: 1000 * 60 * 60 * 2 }
+  })
+);
+app.use(express.static(path.join(__dirname, 'public')));
+
+const passwordRule = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+
+const CATEGORIES_SEED = [
+  ['بيتزا 🍕', 'pizzas', 'بيتزا'],
+  ['برجر 🍔', 'burgers', 'برجر'],
+  ['حلويات 🍰', 'desserts', 'حلويات'],
+  ['مشروبات 🥤', 'drinks', 'مشروبات'],
+  ['مأكولات بحرية 🦐', 'seafoods', 'مأكولات بحرية'],
+  ['مشويات 🥩', 'steaks', 'مشويات'],
+  ['دجاج مقلي 🍗', 'fried-chicken', 'دجاج مقلي'],
+  ['ساندوتشات 🥪', 'sandwiches', 'ساندوتشات'],
+  ['أيس كريم 🍦', 'ice-cream', 'أيس كريم'],
+  ['شوكولاتة 🍫', 'chocolates', 'شوكولاتة'],
+  ['مشاوي (BBQ) 🍖', 'bbqs', 'مشاوي'],
+  ['خبز (Breads) 🥖', 'breads', 'خبز'],
+  ['لحم خنزير (Porks) 🥓', 'porks', 'لحم خنزير'],
+  ['سجق (Sausages) 🌭', 'sausages', 'سجق'],
+  ['Best Food ⭐', 'best-foods', 'أفضل الأطعمة']
+];
+
+async function writeLog(action) {
+  await AdminLog.create({ action });
+}
+
+async function ensureAdminUser() {
+  let admin = await User.findOne({ email: ADMIN_EMAIL });
+  if (!admin) {
+    admin = await User.create({
+      firstName: 'King',
+      lastName: 'Food',
+      email: ADMIN_EMAIL,
+      passwordHash: await bcrypt.hash(ADMIN_PASSWORD, 10),
+      role: 'admin'
+    });
+  }
+  return admin;
+}
+
+function adminOnly(req, res, next) {
+  if (!req.session.userId || req.session.role !== 'admin') {
+    return res.status(401).json({ message: 'Admin login required.' });
+  }
+  return next();
+}
+
+app.post('/api/register', async (req, res) => {
+  try {
+    const { firstName, lastName, email, password, repeatPassword } = req.body;
+    if (!firstName || !lastName || !email || !password || !repeatPassword) return res.status(400).json({ message: 'All fields required' });
+    if (!passwordRule.test(password)) return res.status(400).json({ message: 'Weak password' });
+    if (password !== repeatPassword) return res.status(400).json({ message: 'Passwords do not match' });
+    if (await User.findOne({ email: email.toLowerCase() })) return res.status(409).json({ message: 'Email already exists' });
+
+    await User.create({ firstName, lastName, email, passwordHash: await bcrypt.hash(password, 10), role: 'user' });
+    res.status(201).json({ message: 'Account created successfully' });
+  } catch {
+    res.status(500).json({ message: 'Register failed' });
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email = '', password = '', rememberMe } = req.body;
+    await ensureAdminUser();
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ message: 'Invalid credentials' });
+
+    req.session.userId = String(user._id);
+    req.session.role = user.role;
+    req.session.email = user.email;
+    req.session.cookie.maxAge = rememberMe ? 1000 * 60 * 60 * 24 * 30 : 1000 * 60 * 60 * 2;
+
+    res.json({ message: 'Login successful', role: user.role, redirectTo: user.role === 'admin' ? '/admin.html' : '/' });
+  } catch {
+    res.status(500).json({ message: 'Login failed' });
+  }
+});
+
+app.post('/api/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  const user = await User.findOne({ email: (email || '').toLowerCase() });
+  if (!user) return res.json({ message: 'If account exists reset code sent' });
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  user.resetCodeHash = await bcrypt.hash(code, 10);
+  user.resetCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await user.save();
+  res.json({ message: 'Demo mode: reset code generated', resetCode: code });
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  const { email, code, newPassword, repeatPassword } = req.body;
+  const user = await User.findOne({ email: (email || '').toLowerCase() });
+  if (!user || !user.resetCodeHash || new Date() > user.resetCodeExpiresAt) return res.status(400).json({ message: 'Invalid/expired code' });
+  if (!(await bcrypt.compare(code || '', user.resetCodeHash))) return res.status(400).json({ message: 'Invalid code' });
+  if (!passwordRule.test(newPassword || '')) return res.status(400).json({ message: 'Weak password' });
+  if (newPassword !== repeatPassword) return res.status(400).json({ message: 'Passwords do not match' });
+
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.resetCodeHash = undefined;
+  user.resetCodeExpiresAt = undefined;
+  await user.save();
+  res.json({ message: 'Password reset successful' });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.json({ message: 'Logged out' });
+  });
+});
+
+app.get('/api/admin/me', adminOnly, async (req, res) => {
+  const user = await User.findById(req.session.userId);
+  res.json({ name: `${user.firstName} ${user.lastName}`, email: user.email });
+});
+
+app.post('/api/admin/seed-food-data', adminOnly, async (req, res) => {
+  try {
+    for (const [en, key, ar] of CATEGORIES_SEED) {
+      const apiUrl = `https://free-food-menus-api-two.vercel.app/${key}`;
+      let category = await Category.findOne({ apiUrl });
+      if (!category) {
+        const first = await fetch(apiUrl).then((r) => r.json()).then((d) => d[0]).catch(() => null);
+        category = await Category.create({ nameEn: en, nameAr: ar, apiUrl, imageUrl: first?.img || '', isActive: true });
+      }
+
+      if ((await Product.countDocuments({ category: category._id })) > 0) continue;
+      const data = await fetch(apiUrl).then((r) => r.json()).catch(() => []);
+      const bulk = data.map((p) => ({
+        name: p.name || p.dsc || en,
+        description: p.dsc || '',
+        price: Number(p.price) || 0,
+        originalPrice: Number(p.price) || 0,
+        category: category._id,
+        imageUrl: p.img || '',
+        inStock: true,
+        featured: false,
+        onSale: false,
+        rating: Number(p.rate) || 0,
+        reviewsCount: 0,
+        sourceApi: apiUrl
+      }));
+      if (bulk.length) await Product.insertMany(bulk);
+    }
+    await writeLog('Food data seeded/imported from APIs');
+    res.json({ message: 'Seeding done' });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.get('/api/admin/categories', adminOnly, async (_req, res) => res.json(await Category.find().sort({ createdAt: -1 })));
+app.post('/api/admin/categories', adminOnly, async (req, res) => {
+  const doc = await Category.create(req.body);
+  await writeLog(`Category created: ${doc.nameEn}`);
+  res.status(201).json(doc);
+});
+app.put('/api/admin/categories/:id', adminOnly, async (req, res) => {
+  const doc = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  await writeLog(`Category updated: ${doc?.nameEn || req.params.id}`);
+  res.json(doc);
+});
+app.delete('/api/admin/categories/:id', adminOnly, async (req, res) => {
+  await Category.findByIdAndDelete(req.params.id);
+  await writeLog(`Category deleted: ${req.params.id}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/products', adminOnly, async (_req, res) => res.json(await Product.find().populate('category').sort({ createdAt: -1 })));
+app.post('/api/admin/products', adminOnly, async (req, res) => {
+  const doc = await Product.create(req.body);
+  await writeLog(`Product created: ${doc.name}`);
+  res.status(201).json(doc);
+});
+app.put('/api/admin/products/:id', adminOnly, async (req, res) => {
+  const doc = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  await writeLog(`Product updated: ${doc?.name || req.params.id}`);
+  res.json(doc);
+});
+app.delete('/api/admin/products/:id', adminOnly, async (req, res) => {
+  await Product.findByIdAndDelete(req.params.id);
+  await writeLog(`Product deleted: ${req.params.id}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/users', adminOnly, async (_req, res) => {
+  const users = await User.find().sort({ createdAt: -1 });
+  const enriched = await Promise.all(
+    users.map(async (u) => {
+      const orders = await Order.find({ user: u._id });
+      const totalSpent = orders.reduce((s, o) => s + (o.total || 0), 0);
+      return { _id: u._id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim(), email: u.email, role: u.role, joined: u.createdAt, orders: orders.length, totalSpent };
+    })
+  );
+  res.json(enriched);
+});
+app.put('/api/admin/users/:id', adminOnly, async (req, res) => {
+  const doc = await User.findByIdAndUpdate(req.params.id, { role: req.body.role }, { new: true });
+  await writeLog(`User role updated: ${doc?.email}`);
+  res.json(doc);
+});
+app.post('/api/admin/users/:id/send-email', adminOnly, async (req, res) => {
+  const user = await User.findById(req.params.id);
+  await writeLog(`Email queued to ${user?.email}: ${req.body.subject || 'No subject'}`);
+  res.json({ message: 'Demo email logged in system logs (no SMTP configured).' });
+});
+
+app.get('/api/admin/orders', adminOnly, async (_req, res) => res.json(await Order.find().sort({ createdAt: -1 })));
+app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
+  const doc = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
+  await writeLog(`Order status updated: ${doc?.orderNo} => ${doc?.status}`);
+  res.json(doc);
+});
+
+app.get('/api/admin/coupons', adminOnly, async (_req, res) => res.json(await Coupon.find().sort({ createdAt: -1 })));
+app.post('/api/admin/coupons', adminOnly, async (req, res) => {
+  const doc = await Coupon.create(req.body);
+  await writeLog(`Coupon created: ${doc.code}`);
+  res.status(201).json(doc);
+});
+app.put('/api/admin/coupons/:id', adminOnly, async (req, res) => {
+  const doc = await Coupon.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  await writeLog(`Coupon updated: ${doc?.code}`);
+  res.json(doc);
+});
+app.delete('/api/admin/coupons/:id', adminOnly, async (req, res) => {
+  await Coupon.findByIdAndDelete(req.params.id);
+  await writeLog(`Coupon deleted: ${req.params.id}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/notifications', adminOnly, async (_req, res) => res.json(await Notification.find().populate('user').sort({ createdAt: -1 })));
+app.post('/api/admin/notifications', adminOnly, async (req, res) => {
+  const doc = await Notification.create(req.body);
+  await writeLog(`Notification sent: ${doc.title}`);
+  res.status(201).json(doc);
+});
+app.put('/api/admin/notifications/:id', adminOnly, async (req, res) => res.json(await Notification.findByIdAndUpdate(req.params.id, req.body, { new: true })));
+app.delete('/api/admin/notifications/:id', adminOnly, async (req, res) => {
+  await Notification.findByIdAndDelete(req.params.id);
+  await writeLog(`Notification deleted: ${req.params.id}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/logs', adminOnly, async (_req, res) => res.json(await AdminLog.find().sort({ createdAt: -1 }).limit(200)));
+
+app.get('/api/admin/analytics', adminOnly, async (req, res) => {
+  const range = req.query.range || '7d';
+  const days = range === '365d' ? 365 : range === '30d' ? 30 : 7;
+  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const orders = await Order.find({ createdAt: { $gte: start } });
+  const totalRevenue = orders.reduce((s, o) => s + (o.total || 0), 0);
+  const totalOrders = orders.length;
+  const avgOrderValue = totalOrders ? totalRevenue / totalOrders : 0;
+  const totalUsers = await User.countDocuments({ role: 'user' });
+
+  const byStatus = ['processing', 'shipping', 'delivered', 'cancelled'].map((s) => ({ status: s, count: orders.filter((o) => o.status === s).length }));
+  const topSelling = await Order.aggregate([
+    { $unwind: '$items' },
+    { $group: { _id: '$items.name', sold: { $sum: '$items.qty' }, revenue: { $sum: { $multiply: ['$items.qty', '$items.price'] } } } },
+    { $sort: { sold: -1 } },
+    { $limit: 5 }
+  ]);
+
+  const revenueSeries = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    dayStart.setDate(dayStart.getDate() - i);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setHours(23, 59, 59, 999);
+    const dayRevenue = orders
+      .filter((o) => o.createdAt >= dayStart && o.createdAt <= dayEnd)
+      .reduce((s, o) => s + (o.total || 0), 0);
+    revenueSeries.push({ label: dayStart.toISOString().slice(0, 10), revenue: dayRevenue });
+  }
+
+  res.json({ totalRevenue, totalOrders, avgOrderValue, totalUsers, byStatus, topSelling, revenueSeries });
+});
+
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
+
+app.listen(PORT, async () => {
+  await ensureAdminUser();
+  console.log(`Server running http://localhost:${PORT}`);
+});
