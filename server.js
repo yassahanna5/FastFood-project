@@ -115,6 +115,15 @@ const notificationSchema = new mongoose.Schema(
 
 const logSchema = new mongoose.Schema({ action: String }, { timestamps: true });
 
+const profileSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User',unique:true}, fullName:String,email:String,phone:String,dob:Date,gender:String,photoUrl:String },{timestamps:true});
+const addressSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, type:String,fullName:String,phone:String,streetAddress:String,city:String,zipCode:String,isDefault:Boolean },{timestamps:true});
+const paymentSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, cardLast4:String,cardholderName:String,expiryDate:String,cvv:String,isDefault:Boolean },{timestamps:true});
+const wishlistSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, product:{type:mongoose.Schema.Types.ObjectId,ref:'Product'} },{timestamps:true});
+const cartSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User',unique:true}, items:[{ product:{type:mongoose.Schema.Types.ObjectId,ref:'Product'}, qty:Number }] },{timestamps:true});
+const bookingSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, fullName:String,email:String,phone:String,date:String,time:String,guests:String,requests:String },{timestamps:true});
+const conversationSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, senderRole:String, message:String, imageUrl:String },{timestamps:true});
+
+
 const User = mongoose.model('User', userSchema);
 const Category = mongoose.model('Category', categorySchema);
 const Product = mongoose.model('Product', productSchema);
@@ -122,6 +131,13 @@ const Order = mongoose.model('Order', orderSchema);
 const Coupon = mongoose.model('Coupon', couponSchema);
 const Notification = mongoose.model('Notification', notificationSchema);
 const AdminLog = mongoose.model('AdminLog', logSchema);
+const UserProfile = mongoose.model('UserProfile', profileSchema);
+const UserAddress = mongoose.model('UserAddress', addressSchema);
+const PaymentMethod = mongoose.model('PaymentMethod', paymentSchema);
+const Wishlist = mongoose.model('Wishlist', wishlistSchema);
+const Cart = mongoose.model('Cart', cartSchema);
+const TableBooking = mongoose.model('TableBooking', bookingSchema);
+const Conversation = mongoose.model('Conversation', conversationSchema);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -213,7 +229,7 @@ app.post('/api/login', async (req, res) => {
     req.session.email = user.email;
     req.session.cookie.maxAge = rememberMe ? 1000 * 60 * 60 * 24 * 30 : 1000 * 60 * 60 * 2;
 
-    res.json({ message: 'Login successful', role: user.role, redirectTo: user.role === 'admin' ? '/admin.html' : '/' });
+    res.json({ message: 'Login successful', role: user.role, redirectTo: user.role === 'admin' ? '/admin.html' : '/home.html' });
   } catch {
     res.status(500).json({ message: 'Login failed' });
   }
@@ -461,6 +477,34 @@ app.get('/api/admin/analytics', adminOnly, async (req, res) => {
 
   res.json({ totalRevenue, totalOrders, avgOrderValue, totalUsers, byStatus, topSelling, revenueSeries });
 });
+
+
+function authOnly(req,res,next){ if(!req.session.userId) return res.status(401).json({message:'Login required'}); next(); }
+app.get('/api/store/categories', async (_req,res)=>res.json(await Category.find({isActive:true}).sort({createdAt:-1})));
+app.get('/api/store/products', async (_req,res)=>res.json(await Product.find().populate('category').sort({createdAt:-1})));
+app.get('/api/user/profile', authOnly, async (req,res)=>{ let p=await UserProfile.findOne({user:req.session.userId}); if(!p){const u=await User.findById(req.session.userId); p=await UserProfile.create({user:req.session.userId,fullName:`${u.firstName||''} ${u.lastName||''}`.trim(),email:u.email,gender:'male'});} res.json(p); });
+app.put('/api/user/profile', authOnly, async (req,res)=>res.json(await UserProfile.findOneAndUpdate({user:req.session.userId},req.body,{new:true,upsert:true})));
+app.get('/api/user/wishlist', authOnly, async (req,res)=>{const w=await Wishlist.find({user:req.session.userId}).populate('product');res.json(w.map(x=>x.product).filter(Boolean));});
+app.post('/api/user/wishlist/toggle', authOnly, async (req,res)=>{const {productId}=req.body; const ex=await Wishlist.findOne({user:req.session.userId,product:productId}); if(ex){await ex.deleteOne(); return res.json({liked:false});} await Wishlist.create({user:req.session.userId,product:productId}); res.json({liked:true});});
+app.get('/api/user/cart', authOnly, async (req,res)=>{let c=await Cart.findOne({user:req.session.userId}).populate('items.product'); if(!c)c=await Cart.create({user:req.session.userId,items:[]}); res.json(c);});
+app.post('/api/user/cart', authOnly, async (req,res)=>{const {productId,qty}=req.body; let c=await Cart.findOne({user:req.session.userId}); if(!c)c=await Cart.create({user:req.session.userId,items:[]}); const idx=c.items.findIndex(i=>String(i.product)===String(productId)); if(idx>=0)c.items[idx].qty+=qty; else c.items.push({product:productId,qty}); await c.save(); res.json(c);});
+app.put('/api/user/cart/qty', authOnly, async (req,res)=>{const {productId,delta}=req.body; const c=await Cart.findOne({user:req.session.userId}).populate('items.product'); if(!c) return res.json({}); const it=c.items.find(i=>String(i.product._id||i.product)===String(productId)); if(it){const stock=it.product.inStock?999:0; it.qty=Math.max(1,Math.min(stock,it.qty+Number(delta||0)));} await c.save(); res.json(c);});
+app.post('/api/user/cart/apply-coupon', authOnly, async (req,res)=>{const c=await Coupon.findOne({code:req.body.code,isActive:true}); if(!c) return res.status(400).json({message:'Invalid coupon'}); const discount=c.discountType==='percentage'?c.discountValue:c.discountValue; res.json({discount});});
+app.post('/api/user/orders/checkout', authOnly, async (req,res)=>{const c=await Cart.findOne({user:req.session.userId}).populate('items.product'); if(!c||!c.items.length)return res.status(400).json({message:'Empty cart'}); const subtotal=c.items.reduce((s,i)=>s+i.qty*(i.product?.price||0),0); const shipping=10,tax=subtotal*0.14,total=subtotal+shipping+tax; const u=await User.findById(req.session.userId); const ad=await UserAddress.findOne({user:req.session.userId,isDefault:true}); const order=await Order.create({orderNo:`ORD-${Date.now()}`,user:req.session.userId,customerName:`${u.firstName||''} ${u.lastName||''}`.trim(),customerEmail:u.email,shippingAddress:ad?`${ad.streetAddress}, ${ad.city}`:'',items:c.items.map(i=>({product:i.product._id,name:i.product.name,qty:i.qty,price:i.product.price})),subtotal,shipping,tax,total,status:'processing'}); c.items=[]; await c.save(); res.json(order);});
+app.get('/api/user/orders', authOnly, async (req,res)=>res.json(await Order.find({user:req.session.userId}).sort({createdAt:-1})));
+app.get('/api/user/addresses', authOnly, async (req,res)=>res.json(await UserAddress.find({user:req.session.userId}).sort({createdAt:-1})));
+app.post('/api/user/addresses', authOnly, async (req,res)=>{if(req.body.isDefault) await UserAddress.updateMany({user:req.session.userId},{isDefault:false}); res.json(await UserAddress.create({...req.body,user:req.session.userId}));});
+app.put('/api/user/addresses/default', authOnly, async (req,res)=>{await UserAddress.updateMany({user:req.session.userId},{isDefault:false}); await UserAddress.findOneAndUpdate({_id:req.body.id,user:req.session.userId},{isDefault:true}); res.json({ok:true});});
+app.delete('/api/user/addresses/:id', authOnly, async (req,res)=>{await UserAddress.deleteOne({_id:req.params.id,user:req.session.userId}); res.json({ok:true});});
+app.get('/api/user/payments', authOnly, async (req,res)=>res.json(await PaymentMethod.find({user:req.session.userId})));
+app.post('/api/user/payments', authOnly, async (req,res)=>{const {cardNumber,cardholderName,expiryDate,cvv,isDefault}=req.body; if(!/^\d{16}$/.test(cardNumber)) return res.status(400).json({message:'invalid card number'}); if(!/^\d{3}$/.test(cvv)) return res.status(400).json({message:'invalid cvv'}); const [m,y]=expiryDate.split('/').map(Number); const exp=new Date(2000+y,m); if(exp<=new Date()) return res.status(400).json({message:'expiry must be future'}); if(isDefault) await PaymentMethod.updateMany({user:req.session.userId},{isDefault:false}); res.json(await PaymentMethod.create({user:req.session.userId,cardLast4:cardNumber.slice(-4),cardholderName,expiryDate,cvv,isDefault:!!isDefault}));});
+app.post('/api/user/bookings', authOnly, async (req,res)=>res.json(await TableBooking.create({...req.body,user:req.session.userId})));
+app.get('/api/user/notifications', authOnly, async (req,res)=>res.json(await Notification.find({$or:[{user:null},{user:req.session.userId}]}).sort({createdAt:-1})));
+app.get('/api/user/conversations', authOnly, async (req,res)=>res.json(await Conversation.find({user:req.session.userId}).sort({createdAt:1})));
+app.post('/api/user/conversations', authOnly, async (req,res)=>{const m=await Conversation.create({user:req.session.userId,senderRole:'user',message:req.body.message,imageUrl:req.body.imageUrl||''}); await AdminLog.create({action:`New conversation message from user ${req.session.userId}`}); res.json(m);});
+app.get('/api/admin/conversations', adminOnly, async (_req,res)=>res.json(await Conversation.find().populate('user').sort({createdAt:-1})));
+app.post('/api/admin/conversations/reply', adminOnly, async (req,res)=>res.json(await Conversation.create({user:req.body.userId,senderRole:'admin',message:req.body.message,imageUrl:req.body.imageUrl||''})));
+app.post('/api/newsletter/subscribe', async (req,res)=>{await AdminLog.create({action:`Newsletter subscribe: ${req.body.name||''} ${req.body.email||''}`}); res.json({ok:true});});
 
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
 

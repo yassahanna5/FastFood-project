@@ -144,6 +144,22 @@ async function renderLogs() {
   const rows = await api('/api/admin/logs');
   document.getElementById('logsBody').innerHTML = rows.map((l) => `<li>[${new Date(l.createdAt).toLocaleString()}] ${l.action}</li>`).join('');
 }
+async function renderConversations() {
+  const rows = await api('/api/admin/conversations');
+  document.getElementById('convBody').innerHTML = rows
+    .map(
+      (c) => `<div class='border-bottom py-2'><b>${c.user?.email || 'unknown'}</b> [${c.senderRole}] : ${c.message || ''} ${
+        c.imageUrl ? `<img src='${c.imageUrl}' width='50'>` : ''
+      } <button class='btn btn-sm btn-outline-primary' onclick='replyConv(\"${c.user?._id}\")'>Reply</button></div>`
+    )
+    .join('');
+}
+window.replyConv = async (userId) => {
+  const message = prompt('Reply message');
+  if (!message) return;
+  await api('/api/admin/conversations/reply', { method: 'POST', body: JSON.stringify({ userId, message }) });
+  await renderConversations();
+};
 
 async function renderAnalytics() {
   const range = document.getElementById('rangeSelect').value;
@@ -171,7 +187,17 @@ window.del = async function del(url) {
 };
 
 async function loadAll() {
-  await Promise.all([renderCategories(), renderProducts(), renderOrders(), renderUsers(), renderCoupons(), renderNotifications(), renderLogs(), renderAnalytics()]);
+  await Promise.all([
+    renderCategories(),
+    renderProducts(),
+    renderOrders(),
+    renderUsers(),
+    renderCoupons(),
+    renderNotifications(),
+    renderConversations(),
+    renderLogs(),
+    renderAnalytics()
+  ]);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
