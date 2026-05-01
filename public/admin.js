@@ -1,5 +1,6 @@
 let barChart;
 let pieChart;
+let adminSocket;
 
 async function api(url, options = {}) {
   const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
@@ -158,6 +159,7 @@ window.replyConv = async (userId) => {
   const message = prompt('Reply message');
   if (!message) return;
   await api('/api/admin/conversations/reply', { method: 'POST', body: JSON.stringify({ userId, message }) });
+  if (adminSocket) adminSocket.emit('support:admin-reply', { userId, message });
   await renderConversations();
 };
 
@@ -201,6 +203,10 @@ async function loadAll() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (typeof io !== 'undefined') {
+    adminSocket = io();
+    adminSocket.on('support:admin-feed', () => renderConversations());
+  }
   const menuToggle = document.getElementById('menuToggle');
   if (menuToggle) {
     menuToggle.addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));

@@ -1,5 +1,6 @@
 const path = require('path');
 const express = require('express');
+const http = require('http');
 const session = require('express-session');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -9,6 +10,9 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
 const ADMIN_EMAIL = 'admin2030@gmail.com';
@@ -122,6 +126,7 @@ const wishlistSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.Ob
 const cartSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User',unique:true}, items:[{ product:{type:mongoose.Schema.Types.ObjectId,ref:'Product'}, qty:Number }] },{timestamps:true});
 const bookingSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, fullName:String,email:String,phone:String,date:String,time:String,guests:String,requests:String },{timestamps:true});
 const conversationSchema = new mongoose.Schema({ user:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, senderRole:String, message:String, imageUrl:String },{timestamps:true});
+const newsletterSchema = new mongoose.Schema({ name:String, email:String },{timestamps:true});
 
 
 const User = mongoose.model('User', userSchema);
@@ -138,6 +143,7 @@ const Wishlist = mongoose.model('Wishlist', wishlistSchema);
 const Cart = mongoose.model('Cart', cartSchema);
 const TableBooking = mongoose.model('TableBooking', bookingSchema);
 const Conversation = mongoose.model('Conversation', conversationSchema);
+const Newsletter = mongoose.model('Newsletter', newsletterSchema);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -504,11 +510,39 @@ app.get('/api/user/conversations', authOnly, async (req,res)=>res.json(await Con
 app.post('/api/user/conversations', authOnly, async (req,res)=>{const m=await Conversation.create({user:req.session.userId,senderRole:'user',message:req.body.message,imageUrl:req.body.imageUrl||''}); await AdminLog.create({action:`New conversation message from user ${req.session.userId}`}); res.json(m);});
 app.get('/api/admin/conversations', adminOnly, async (_req,res)=>res.json(await Conversation.find().populate('user').sort({createdAt:-1})));
 app.post('/api/admin/conversations/reply', adminOnly, async (req,res)=>res.json(await Conversation.create({user:req.body.userId,senderRole:'admin',message:req.body.message,imageUrl:req.body.imageUrl||''})));
-app.post('/api/newsletter/subscribe', async (req,res)=>{await AdminLog.create({action:`Newsletter subscribe: ${req.body.name||''} ${req.body.email||''}`}); res.json({ok:true});});
+app.post('/api/newsletter/subscribe', async (req,res)=>{await Newsletter.create({name:req.body.name||'',email:req.body.email||''});await AdminLog.create({action:`Newsletter subscribe: ${req.body.name||''} ${req.body.email||''}`}); res.json({ok:true});});
+app.post('/api/translate', async (req, res) => {
+  const { text = '', target = 'ar' } = req.body;
+  if (!text.trim()) return res.json({ translated: '' });
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
+      target
+    )}&dt=t&q=${encodeURIComponent(text)}`;
+    const data = await fetch(url).then((r) => r.json());
+    const translated = (data?.[0] || []).map((x) => x?.[0] || '').join('');
+    return res.json({ translated });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+});
 
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
 
-app.listen(PORT, async () => {
+io.on('connection', (socket) => {
+  socket.on('join-user-room', (userId) => socket.join(`user:${userId}`));
+  socket.on('support:user-message', async (payload) => {
+    const msg = await Conversation.create({ user: payload.userId, senderRole: 'user', message: payload.message || '', imageUrl: payload.imageUrl || '' });
+    io.to(`user:${payload.userId}`).emit('support:new-message', msg);
+    io.emit('support:admin-feed', msg);
+  });
+  socket.on('support:admin-reply', async (payload) => {
+    const msg = await Conversation.create({ user: payload.userId, senderRole: 'admin', message: payload.message || '', imageUrl: payload.imageUrl || '' });
+    io.to(`user:${payload.userId}`).emit('support:new-message', msg);
+    io.emit('support:admin-feed', msg);
+  });
+});
+
+server.listen(PORT, async () => {
   await ensureAdminUser();
   console.log(`Server running http://localhost:${PORT}`);
 });
