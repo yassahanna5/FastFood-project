@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <circle cx="256" cy="182" r="95" fill="#111827" opacity="0.12"/>
+  <text x="256" y="170" font-size="86" text-anchor="middle">👨‍🍳</text>
+  <text x="256" y="320" font-size="56" text-anchor="middle" fill="#f6b247" font-family="cursive">King Food</text>
+  <text x="256" y="370" font-size="42" text-anchor="middle" fill="#111827" font-family="Arial">Restaurant</text>
+</svg>
