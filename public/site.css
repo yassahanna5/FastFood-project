@@ -1,0 +1,10 @@
+:root{--bg:#0b1220;--panel:#111a2e;--panel2:#1a2540;--text:#e7ecf8;--muted:#9da9c4;--accent:#ff6b35;--accent2:#f59e0b;--ok:#10b981}
+*{box-sizing:border-box}body{font-family:Inter,Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#0b1220,#0d1730);color:var(--text)}
+.nav-theme{background:var(--panel)!important;border-bottom:1px solid #26334f}.nav-link,.navbar-brand{color:var(--text)!important}.btn{border-radius:12px}.btn-primary,.btn-danger{background:var(--accent);border-color:var(--accent)}.btn-outline-light{border-color:#364568}
+.hero{position:relative;height:68vh;min-height:420px;overflow:hidden}.hero img{width:100%;height:100%;object-fit:cover;filter:contrast(1.2) brightness(1.08);animation:zoom 12s ease-in-out infinite alternate}.overlay{position:absolute;inset:0;background:linear-gradient(0deg,#050a16cc,#050a165e);display:grid;place-content:center;text-align:center}
+.card,.panel{background:var(--panel2);border:1px solid #2c3d62;color:var(--text);border-radius:14px}.form-control,.form-select{background:#0f1a33;color:var(--text);border-color:#2d3e62}
+.badge-count{position:absolute;top:-6px;right:-5px;background:#ef4444;color:#fff;border-radius:999px;padding:1px 6px;font-size:11px}
+.category-chip{cursor:pointer;text-align:center}.category-chip img{width:78px;height:78px;border-radius:50%;object-fit:cover;border:2px solid #2a3b5c}.category-chip.active img{border-color:var(--accent)}
+.multi-footer{background:#060b16;border-top:1px solid #25324c}.multi-footer a{color:#c7d1e6;text-decoration:none}.multi-footer a:hover{color:#fff}.social i{font-size:20px}
+.product-img{height:170px;object-fit:cover;width:100%;border-radius:12px}.small-avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid #30446e}
+@keyframes zoom{from{transform:scale(1)}to{transform:scale(1.1)}}
